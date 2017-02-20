@@ -3,6 +3,7 @@ import random
 import os
 
 from loc import Loc, ModLoc, Size
+from util import modify_loc, modify_x, modify_y
 blank = ' '
 rock = '#'
 ladder = '+'
@@ -10,6 +11,12 @@ blocked = set([rock])
 vpsize = Size(79, 21)
 sizex, sizey = vpsize.x*100 + 1, vpsize.y*100 + 1
 mkrow = lambda size: [blank] * size
+in_bounds = lambda L: (0 <= L[0] < sizex) and (0 <= L[1] < sizey)
+inverted = lambda x: int(not x)
+
+def contains_items(B,L):
+    from piece import Item
+    return any(isinstance(x,Item) for x in B[L])
 
 def is_blocked(tile):
     # print("set(tile)", set(tile))
@@ -30,12 +37,17 @@ test_is_blocked()
 #         opp = inverted(coord)
 #         yield Loc(vals={coord: a, opp: loc1[opp]})
 
-inverted = lambda x: int(not x)
 def line(loc1, loc2):
     coord = int( loc1[0]==loc2[0] )
     for a in range(loc1[coord], loc2[coord]):
         opp = inverted(coord)
         yield Loc(vals={coord: a, opp: loc1[opp]})
+
+class ModLocs:
+    down = ModLoc(0,1)
+    up = ModLoc(0,-1)
+    right = ModLoc(1,0)
+    left = ModLoc(-1,0)
 
 class Board:
     def __init__(self, sizex, sizey, cursor=(0,0)):
@@ -43,6 +55,7 @@ class Board:
         self.sizex, self.sizey = sizex, sizey
         self.board = [mkrow(sizex) for _ in range(sizey)]
         self.generated_viewports = set()
+        self.messages = []
         self.gen_viewport()
 
     def in_generated_viewport(self, loc):
@@ -56,17 +69,85 @@ class Board:
     def gen_viewport(self, loc=None):
         v=self.viewport(loc)
         if v not in self.generated_viewports:
-            y = v.y + vpsize[1]-1
-            for x in range(v.x, v.x+vpsize[0]+1):
-                try: self[(x,y)] = [rock]
-                except IndexError as e:
-                    print('err',loc,v,x,y); raise e
-
-                self.add_rocks_ladders(x, y)
+            self.add_rocks(v)
+            # y = v.y + vpsize[1]-1
+            # for x in range(v.x, v.x+vpsize[0]+1):
+            #     try: self[(x,y)] = [rock]
+            #     except IndexError as e:
+            #         print('err',loc,v,x,y); raise e
+            # 
+            #     self.add_rocks_ladders(x, y)
 
             self.add_platforms(v)
             self.generated_viewports.add(v)
 
+    def at_start_x(self, loc): return loc[0] == 0
+    def at_start_y(self, loc): return loc[1] == 0
+    def at_end_x(self, loc): return loc[0] == self.sizex-1
+    def at_end_y(self, loc): return loc[1] == self.sizey-1
+    def vp_bottom_right_pt(self, vp):
+        return (vp[0]+vpsize[0], vp[1]+vpsize[1])
+
+    def contains(self, loc, item):
+        tile = self[loc]
+        return item==tile or item in tile
+
+    def get_first_along_line(self, start, mod_loc, item, end=None):
+        print ("in get_first_along_line(), start, modloc, item, end",start,mod_loc,item,end)
+        loc = start
+        while True:
+            if not in_bounds(loc):
+                return None
+            if self.contains(loc, item):
+                return loc
+            if loc == end:
+                return None
+            loc = modify_loc(loc, mod_loc)
+
+    def fill_rocks(self, start, end):
+        for loc in line(start,end):
+            self[loc] = [rock]
+        
+    def add_rocks(self, vp):
+        print("vp", vp)
+        x = vp[0]
+        y1 = y2 = base_y = vp.y + vpsize.y-1
+        if not self.at_start_x(vp):
+            start = modify_x(vp, -1)
+            end = modify_y(start, vpsize.y)
+            first_rock = self.get_first_along_line(start, ModLocs.down, rock, end=end)
+            if first_rock:
+                y1 = first_rock[1]
+
+        print(1, modify_x(vp, vpsize.x+1))
+        print(2, in_bounds((80,0)))
+        if in_bounds(modify_x(vp, vpsize.x+1)):
+            start = modify_x(vp, vpsize.x+1)
+            end = modify_y(start, vpsize.y)
+            first_rock = self.get_first_along_line(start, ModLocs.down, rock, end=end)
+            if first_rock:
+                y2 = first_rock[1]
+        y = y1
+        x2 = vp[0]+vpsize[0]
+
+        while True:
+            if x>x2:
+                break
+            self.fill_rocks((x,base_y), (x,y))
+            x+=1
+            if x2-x <= 10:
+                y += 1 if y2>y else -1
+            elif rand()>0.2:
+                pass
+            elif rand()>0.95:
+                mod = randrange(2,10)
+                if rand()>.5:
+                    mod=-mod
+                y+=mod
+                y=min(y, vp[1]-1)
+            else:
+                y+= random.choice((-1,1))
+        
     def add_platforms(self, v):
         if rand()>0.3:
             sx = v.x + randrange(5, vpsize.x-10)
@@ -183,3 +264,21 @@ class Board:
             x,y = randrange(0, self.sizex), randrange(0, self.sizey)
             if self[(x,y)] is blank:
                 return x,y
+
+    def contains_items(self, L):
+        from piece import Item
+        return any(isinstance(x,Item) for x in self[L])
+
+    def items(self, L):
+        from piece import Item
+        return [x for x in self[L] if isinstance(x,Item)]
+
+    def at_edge(self, L):
+        x,y=L
+        X,Y=vpsize
+        a,b = x%X in (0,X-1), y%Y == Y+1
+        # if a: print(1, x%X)
+        return a or b
+
+    def add_message(self, msg):
+        self.messages.append(msg)

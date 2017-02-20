@@ -231,7 +231,7 @@ class Term:
         self.curses()
         c = os.read(self.fd, 1)
         self.normal()
-        return c
+        return c.decode('utf-8')
 
     def size(self):
         """Return terminal size as tuple (height, width)."""
