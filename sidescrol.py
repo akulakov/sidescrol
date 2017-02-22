@@ -61,7 +61,8 @@ class InvalidMove(Exception):
 
 B=Board(sizex, sizey)
 term=Term()
-player = Being(B, '@', Loc(40,19), is_cursor=True, health=200, is_player=True, term=term)
+
+
 items.add_items(Item, B, Loc)
 monsters=[]
 for _ in range(NUM_MONSTERS):
@@ -71,6 +72,7 @@ for _ in range(NUM_MONSTERS):
         if B[loc] is board.blank:
             monsters.append(Being(B, 'o', loc, health=10))
     
+player = Being(B, '@', B.placeable_loc_at_vp((0,0),1), is_cursor=True, health=200, is_player=True, term=term)
 B.display()
 
 
@@ -81,7 +83,7 @@ class Sidescrol:
                 player.walk()
                 B.display()
                 print('[%s] [HP %d] ' % (player.loc, player.health))
-                sleep(0.1)
+                sleep(0.01)
                 continue
 
             print('> ', end='')
@@ -97,12 +99,18 @@ class Sidescrol:
             while True:
                 inp += term.getch()
                 if inp in cmds: break
+                if inp.startswith('.'):
+                    if inp.endswith('\n'):
+                        inp = inp.strip()
+                        break
+                    continue
+
                 if not any(c.startswith(inp) for c in cmds):
                     print("invalid command %s, try again.." % inp)
                     inp = ''
                     break
 
-            if inp in cmds:
+            if inp in cmds or inp.startswith('.T'):
                 if inp=='q'  : sys.exit()
                 elif inp=='j': player.down()
                 elif inp=='k': player.up()
@@ -113,6 +121,10 @@ class Sidescrol:
                 elif hasattr(player, cmds[inp]):
                     cmd = getattr(player, cmds[inp])
                     cmd()
+                elif inp[:2]=='.T':
+                    inp=inp[2:]
+                    x,y = map(int, inp.split(','))
+                    player.move((x,y))
                 else:
                     pass
 

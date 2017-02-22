@@ -3,7 +3,7 @@ import random
 import os
 
 from loc import Loc, ModLoc, Size
-from util import modify_loc, modify_x, modify_y
+from util import modify_loc, modify_x, modify_y, envelope
 blank = ' '
 rock = '#'
 ladder = '+'
@@ -22,7 +22,7 @@ def is_blocked(tile):
     # print("set(tile)", set(tile))
     # print("blocked", blocked)
     # print(set(tile) & blocked)
-    return set(tile) & blocked
+    return tile==rock or (set(tile) & blocked)
 
 def test_is_blocked():
     assert is_blocked(['#'])
@@ -75,7 +75,7 @@ class Board:
             #     try: self[(x,y)] = [rock]
             #     except IndexError as e:
             #         print('err',loc,v,x,y); raise e
-            # 
+            #
             #     self.add_rocks_ladders(x, y)
 
             self.add_platforms(v)
@@ -93,7 +93,7 @@ class Board:
         return item==tile or item in tile
 
     def get_first_along_line(self, start, mod_loc, item, end=None):
-        print ("in get_first_along_line(), start, modloc, item, end",start,mod_loc,item,end)
+        # print ("in get_first_along_line(), start, modloc, item, end",start,mod_loc,item,end)
         loc = start
         while True:
             if not in_bounds(loc):
@@ -106,12 +106,13 @@ class Board:
 
     def fill_rocks(self, start, end):
         for loc in line(start,end):
-            self[loc] = [rock]
-        
+            self[loc] = rock
+
     def add_rocks(self, vp):
-        print("vp", vp)
+        # print("vp", vp)
         x = vp[0]
-        y1 = y2 = base_y = vp.y + vpsize.y-1
+        y1 = y2 = base_y = vp.y + vpsize.y
+        y1-=1
         if not self.at_start_x(vp):
             start = modify_x(vp, -1)
             end = modify_y(start, vpsize.y)
@@ -119,8 +120,8 @@ class Board:
             if first_rock:
                 y1 = first_rock[1]
 
-        print(1, modify_x(vp, vpsize.x+1))
-        print(2, in_bounds((80,0)))
+        # print(1, modify_x(vp, vpsize.x+1))
+
         if in_bounds(modify_x(vp, vpsize.x+1)):
             start = modify_x(vp, vpsize.x+1)
             end = modify_y(start, vpsize.y)
@@ -129,34 +130,56 @@ class Board:
                 y2 = first_rock[1]
         y = y1
         x2 = vp[0]+vpsize[0]
+        # for loc in line((x,y),(x2,y)) + line((x,y-1),(x2,y-1)):
+        # self.fill_rocks((x,y),(x2,y))
+        # self.fill_rocks((x,y-1),(x2,y-1))
+        # self.fill_rocks((x,y-2),(x2,y-2))
+        # return
+        # print(3, x,x2)
 
         while True:
-            if x>x2:
+            if x>=x2 or y>base_y:
                 break
-            self.fill_rocks((x,base_y), (x,y))
+            # print('!', x, (base_y), (y))
+            self.fill_rocks((x,y), (x,base_y))
             x+=1
-            if x2-x <= 10:
+            if 0 and x2-x <= 10:
                 y += 1 if y2>y else -1
             elif rand()>0.2:
                 pass
             elif rand()>0.95:
                 mod = randrange(2,10)
                 if rand()>.5:
+                    mod /= 2
+                if rand()>.5:
                     mod=-mod
                 y+=mod
                 y=min(y, vp[1]-1)
             else:
                 y+= random.choice((-1,1))
-        
+
+            y = envelope(y, vp.y+2, base_y-1)
+
     def add_platforms(self, v):
         if rand()>0.3:
-            sx = v.x + randrange(5, vpsize.x-10)
-            sy = ey = v.y + randrange(5, vpsize.y-10)
-            X = vpsize.x - 5
-            if X>sx:
-                ex = randrange(sx, vpsize.x-5)
-                for loc in line(Loc(sx,sy),Loc(ex,ey)):
-                    self.add(loc, rock)
+            if vpsize.x-10>5 and vpsize.y-10>5:
+                sx = v.x + randrange(5, vpsize.x-10)
+                sy = ey = v.y + randrange(5, vpsize.y-10)
+                X = vpsize.x - 5
+                if X>sx:
+                    ex = randrange(sx, vpsize.x-5)
+                    for loc in line(Loc(sx,sy),Loc(ex,ey)):
+                        # self.add(loc, rock)
+                        self[loc] = rock
+
+    def placeable_loc_at_vp(self, vp, dbg=0):
+        # TODO check why this needs to be repeated....
+        for _ in range(20):
+            x = randrange(vp[0], vp[0]+vpsize.x+1)
+            yrng = range(vp[1]+vpsize.y-1, vp[1]+1, -1)
+            for y in yrng:
+                if not is_blocked( self[(x,y)] ):
+                    return x,y
 
     def add_rocks_ladders(self, x, y):
         if rand()>0.95:
@@ -197,16 +220,22 @@ class Board:
         for l in locs:
             self[l] = id
 
-    def display(self):
+    def display(self, frame=False):
         # print( self.loc)
         self.gen_viewport()
         render=lambda a: str(a[-1])
         sjoin=lambda L,sep='':sep.join(render(x) for x in L)
 
         v = self.viewport()
-        for _ in range(20): print()
+        if frame:
+            print('-'*(vpsize.x+4))
+        else:
+            for _ in range(20): print()
         for row in self.board[v.y: v.y+vpsize[1]]:
-            print(sjoin(row[v.x: v.x+vpsize[0]]))
+            if frame:
+                print('|', sjoin(row[v.x: v.x+vpsize[0]]), '|')
+            else:
+                print(sjoin(row[v.x: v.x+vpsize[0]]))
         print()
 
     def check_valid(self, loc1, loc2):
