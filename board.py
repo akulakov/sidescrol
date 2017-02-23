@@ -39,7 +39,9 @@ test_is_blocked()
 
 def line(loc1, loc2):
     coord = int( loc1[0]==loc2[0] )
-    for a in range(loc1[coord], loc2[coord]):
+    n,m=loc1[coord], loc2[coord]
+    assert m>n
+    for a in range(n, m):
         opp = inverted(coord)
         yield Loc(vals={coord: a, opp: loc1[opp]})
 
@@ -70,6 +72,7 @@ class Board:
         v=self.viewport(loc)
         if v not in self.generated_viewports:
             self.add_rocks(v)
+            self.add_ladders(v)
             # y = v.y + vpsize[1]-1
             # for x in range(v.x, v.x+vpsize[0]+1):
             #     try: self[(x,y)] = [rock]
@@ -120,8 +123,6 @@ class Board:
             if first_rock:
                 y1 = first_rock[1]
 
-        # print(1, modify_x(vp, vpsize.x+1))
-
         if in_bounds(modify_x(vp, vpsize.x+1)):
             start = modify_x(vp, vpsize.x+1)
             end = modify_y(start, vpsize.y)
@@ -130,66 +131,95 @@ class Board:
                 y2 = first_rock[1]
         y = y1
         x2 = vp[0]+vpsize[0]
-        # for loc in line((x,y),(x2,y)) + line((x,y-1),(x2,y-1)):
-        # self.fill_rocks((x,y),(x2,y))
-        # self.fill_rocks((x,y-1),(x2,y-1))
-        # self.fill_rocks((x,y-2),(x2,y-2))
-        # return
-        # print(3, x,x2)
 
+        last=y
         while True:
+            yl=[]
             if x>=x2 or y>base_y:
                 break
             # print('!', x, (base_y), (y))
             self.fill_rocks((x,y), (x,base_y))
             x+=1
-            if 0 and x2-x <= 10:
+            if x2-x <= 10:
                 y += 1 if y2>y else -1
             elif rand()>0.2:
                 pass
             elif rand()>0.95:
                 mod = randrange(2,10)
-                if rand()>.5:
-                    mod /= 2
-                if rand()>.5:
+                if rand()>.4: mod //= 2
+                if rand()>.6:
                     mod=-mod
                 y+=mod
-                y=min(y, vp[1]-1)
+                yl.append(y)
+                y=max(y, vp[1])
+                yl.append(y)
             else:
-                y+= random.choice((-1,1))
+                y+= 1 if rand()>.45 else -1
 
             y = envelope(y, vp.y+2, base_y-1)
+            yl.append(y)
+            if last-y>10:
+                print("yl", yl)
+                print("mod", mod)
+                print('##')
+            last = y
 
     def add_platforms(self, v):
-        if rand()>0.3:
-            if vpsize.x-10>5 and vpsize.y-10>5:
-                sx = v.x + randrange(5, vpsize.x-10)
-                sy = ey = v.y + randrange(5, vpsize.y-10)
-                X = vpsize.x - 5
-                if X>sx:
-                    ex = randrange(sx, vpsize.x-5)
-                    for loc in line(Loc(sx,sy),Loc(ex,ey)):
-                        # self.add(loc, rock)
-                        self[loc] = rock
+        # TODO: allow same height platforms
+        last = None
+        for rnd in (0.8, 0.8):
+            if rand()>rnd:
+                if vpsize.x-10>5 and vpsize.y-10>5:
+                    sx = v.x + randrange(5, vpsize.x-10)
+                    sy = ey = v.y + randrange(5, vpsize.y-10)
+                    if not last or abs(sy-last)>=4:
+                        X = vpsize.x - 5
+                        if X>sx:
+                            ex = randrange(sx, vpsize.x-5)
+                            if ex-sx >= 4:
+                                for loc in line(Loc(sx,sy),Loc(ex,ey)):
+                                    if self[loc] == [ladder] and rand()>.5:
+                                        pass
+                                    else:
+                                        self[loc] = rock
+                        last = sy
 
-    def placeable_loc_at_vp(self, vp, dbg=0):
+    def placeable_loc_at_vp(self, vp, dbg=0, def_x=None):
+        """ Find a location at viewpoint `vp` where an item can be placed on top of rocks.
+
+        def_x: predefined x coord; if None, will be picked randomly until one of them works.
+        """
         # TODO check why this needs to be repeated....
         for _ in range(20):
-            x = randrange(vp[0], vp[0]+vpsize.x+1)
+            x = def_x
+            if def_x is None:
+                x = randrange(vp[0], vp[0]+vpsize.x+1)
             yrng = range(vp[1]+vpsize.y-1, vp[1]+1, -1)
             for y in yrng:
                 if not is_blocked( self[(x,y)] ):
                     return x,y
+            if def_x is not None:
+                return
 
-    def add_rocks_ladders(self, x, y):
-        if rand()>0.95:
-            self[(x,y-1)] = [rock]
-            if rand()>0.75:
-                self[(x,y-2)] = [rock]
-        elif rand()>0.98:
-            h = randrange(2, vpsize.y-3)
-            for loc in line((x,y-h-2), (x,y)):
+    def add_ladders(self, vp):
+        xlst = []
+        for _ in range(randrange(5)):
+            x = vp[0] + randrange(5, vpsize.x-5)
+            if x in xlst:
+                continue
+            loc = self.placeable_loc_at_vp(vp, def_x=x)
+            if not loc:
+                continue
+            top, base = vp[1], loc[1]-1
+            y = randrange(top, base)
+            min_h = 4
+            if loc[1]-y < min_h:
+                continue
+            if is_blocked(self[(x+1,y)]) or is_blocked(self[(x-1,y)]):
+                continue
+            for loc in line((x,y),(x,loc[1]+1)):
                 self[loc] = [ladder]
+            xlst.extend(range(x-2,x+3))
 
     def add(self, loc, item):
         if item is blank:
@@ -230,7 +260,7 @@ class Board:
         if frame:
             print('-'*(vpsize.x+4))
         else:
-            for _ in range(20): print()
+            for _ in range(30): print()
         for row in self.board[v.y: v.y+vpsize[1]]:
             if frame:
                 print('|', sjoin(row[v.x: v.x+vpsize[0]]), '|')

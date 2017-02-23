@@ -22,7 +22,7 @@ Sidescrol - a side scrolling roguelike.
 # sizex, sizey = 79*1 + 1, 21*1 + 1
 pieces = {}
 player = '@'
-NUM_MONSTERS = 100
+NUM_MONSTERS = 5000
 
 # UTILS
 rand_choice = lambda seq, default=None: random.choice(seq) if seq else default
@@ -57,13 +57,14 @@ class InvalidMove(Exception):
 # END UTILS
 
 
-    
+
 
 B=Board(sizex, sizey)
 term=Term()
 
 
 items.add_items(Item, B, Loc)
+
 monsters=[]
 for _ in range(NUM_MONSTERS):
     loc=B.level_random_loc()
@@ -71,9 +72,14 @@ for _ in range(NUM_MONSTERS):
         B.gen_viewport(loc)
         if B[loc] is board.blank:
             monsters.append(Being(B, 'o', loc, health=10))
-    
+
+def status():
+    print('[%s %s] [HP %d] [dig: %d] ' % (player.loc[0]//board.vpsize.x, player.loc[1]//board.vpsize.y, player.health,
+        player.dig_points))
+
 player = Being(B, '@', B.placeable_loc_at_vp((0,0),1), is_cursor=True, health=200, is_player=True, term=term)
 B.display()
+status()
 
 
 class Sidescrol:
@@ -82,7 +88,7 @@ class Sidescrol:
             if player.program:
                 player.walk()
                 B.display()
-                print('[%s] [HP %d] ' % (player.loc, player.health))
+                status()
                 sleep(0.01)
                 continue
 
@@ -92,7 +98,7 @@ class Sidescrol:
             for c in "hjkl":
                 cmds[c]=c
                 cmds['g'+c] = 'g'+c
-            cmds['\n'] = None     # wait
+            cmds['\n'] = cmds[''] = ''     # wait
 
             inp = ''
 
@@ -111,7 +117,9 @@ class Sidescrol:
                     break
 
             if inp in cmds or inp.startswith('.T'):
-                if inp=='q'  : sys.exit()
+                if inp == '':
+                    pass
+                elif inp=='q'  : sys.exit()
                 elif inp=='j': player.down()
                 elif inp=='k': player.up()
                 elif inp in "hl":
@@ -136,7 +144,7 @@ class Sidescrol:
                     elif rand()>0.95:
                         m.program_move()
                 B.display()
-                print('[%s] [HP %d] ' % (player.loc, player.health))
+                status()
                 for m in B.messages:
                     print(m)
                     B.messages = []

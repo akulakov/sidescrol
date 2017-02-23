@@ -9,4 +9,10 @@ def add_items(Item, B, Loc):
         if loc[0]<(sizex-1) and loc[1]<(sizey-1):
             B.gen_viewport(loc)
             if B[loc] is board.blank:
-                Item(B, '*', B.placeable_loc_at_vp(loc), descr="A simple white gem")
+                try:
+                    x = B.placeable_loc_at_vp(loc)
+                    if not x: continue
+                    Item(B, '*', x, descr="A simple white gem")
+                except Exception as e:
+                    print("x", x)
+                    raise e
